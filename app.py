@@ -42,23 +42,16 @@ if "uploaded_file_id" not in st.session_state:
 # 파일 업로드 처리
 if uploaded_file and st.session_state.uploaded_file_id is None:
     try:
+        # Streamlit 파일 객체를 바이트로 변환
+        file_content = uploaded_file.read()
+        uploaded_file.seek(0)  # 파일 포인터 리셋
+        
         # 파일을 OpenAI에 업로드
         file_response = client.files.create(
-            file=uploaded_file,
+            file=(uploaded_file.name, file_content),
             purpose='assistants'
         )
         st.session_state.uploaded_file_id = file_response.id
-        
-        # Assistant 업데이트 (파일 검색 도구 활성화)
-        client.beta.assistants.update(
-            assistant_id=ASSISTANT_ID,
-            tools=[{"type": "file_search"}],
-            tool_resources={
-                "file_search": {
-                    "vector_store_ids": []
-                }
-            }
-        )
         
         # 벡터 스토어 생성 및 파일 추가
         vector_store = client.beta.vector_stores.create(
@@ -73,6 +66,7 @@ if uploaded_file and st.session_state.uploaded_file_id is None:
         # Assistant에 벡터 스토어 연결
         client.beta.assistants.update(
             assistant_id=ASSISTANT_ID,
+            tools=[{"type": "file_search"}],
             tool_resources={
                 "file_search": {
                     "vector_store_ids": [vector_store.id]
@@ -84,6 +78,7 @@ if uploaded_file and st.session_state.uploaded_file_id is None:
         
     except Exception as e:
         st.sidebar.error(f"파일 업로드 실패: {str(e)}")
+        st.sidebar.error(f"자세한 오류: {type(e).__name__}")
 
 # 업로드된 파일 정보 표시
 if st.session_state.uploaded_file_id:
