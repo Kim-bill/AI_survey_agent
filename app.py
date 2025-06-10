@@ -46,30 +46,20 @@ if uploaded_file and st.session_state.uploaded_file_id is None:
         file_content = uploaded_file.read()
         uploaded_file.seek(0)  # 파일 포인터 리셋
         
-        # 파일을 OpenAI에 업로드
+        # 파일을 OpenAI에 업로드 (간단한 방식)
         file_response = client.files.create(
             file=(uploaded_file.name, file_content),
             purpose='assistants'
         )
         st.session_state.uploaded_file_id = file_response.id
         
-        # 벡터 스토어 생성 및 파일 추가
-        vector_store = client.beta.vector_stores.create(
-            name="설문지 데이터"
-        )
-        
-        client.beta.vector_stores.files.create(
-            vector_store_id=vector_store.id,
-            file_id=file_response.id
-        )
-        
-        # Assistant에 벡터 스토어 연결
+        # Assistant 업데이트 (파일 검색 활성화)
         client.beta.assistants.update(
             assistant_id=ASSISTANT_ID,
             tools=[{"type": "file_search"}],
             tool_resources={
                 "file_search": {
-                    "vector_store_ids": [vector_store.id]
+                    "vector_store_ids": []  # 빈 리스트로 설정
                 }
             }
         )
@@ -99,12 +89,23 @@ if prompt := st.chat_input("메시지를 입력하세요..."):
     # 어시스턴트 응답
     with st.chat_message("assistant"):
         try:
-            # 메시지를 스레드에 추가
-            client.beta.threads.messages.create(
-                thread_id=st.session_state.thread_id,
-                role="user",
-                content=prompt
-            )
+            # 메시지를 스레드에 추가 (파일 첨부)
+            message_data = {
+                "thread_id": st.session_state.thread_id,
+                "role": "user",
+                "content": prompt
+            }
+            
+            # 업로드된 파일이 있으면 첨부
+            if st.session_state.uploaded_file_id:
+                message_data["attachments"] = [
+                    {
+                        "file_id": st.session_state.uploaded_file_id,
+                        "tools": [{"type": "file_search"}]
+                    }
+                ]
+            
+            client.beta.threads.messages.create(**message_data)
             
             # 어시스턴트 실행
             run = client.beta.threads.runs.create(
